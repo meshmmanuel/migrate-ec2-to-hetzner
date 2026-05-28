@@ -335,6 +335,93 @@ log "APT packages captured"
 
 
 # =============================================================================
+# 14. UPLOADER APP (Python service)
+# =============================================================================
+divider "14. UPLOADER APP"
+info "Scanning uploader service..."
+
+UPLOADER_DIR="/var/www/uploader"
+UPLOADER_SERVICE="/etc/systemd/system/uploader.service"
+
+echo "--- uploader.service ---" >> "$REPORT"
+if [ -f "$UPLOADER_SERVICE" ]; then
+    cat "$UPLOADER_SERVICE" >> "$REPORT"
+    mkdir -p "$OUTPUT_DIR/uploader"
+    cp "$UPLOADER_SERVICE" "$OUTPUT_DIR/uploader/uploader.service"
+    log "uploader.service copied"
+else
+    echo "  (uploader.service not found at $UPLOADER_SERVICE)" >> "$REPORT"
+    warn "uploader.service not found"
+fi
+
+echo "" >> "$REPORT"
+echo "--- main.py ---" >> "$REPORT"
+if [ -f "$UPLOADER_DIR/main.py" ]; then
+    cat "$UPLOADER_DIR/main.py" >> "$REPORT"
+    cp "$UPLOADER_DIR/main.py" "$OUTPUT_DIR/uploader/main.py"
+    log "main.py copied"
+else
+    echo "  (main.py not found at $UPLOADER_DIR/main.py)" >> "$REPORT"
+    warn "main.py not found"
+fi
+
+echo "" >> "$REPORT"
+echo "--- uploader pip dependencies ---" >> "$REPORT"
+if [ -f "$UPLOADER_DIR/venv/bin/pip" ]; then
+    "$UPLOADER_DIR/venv/bin/pip" freeze 2>/dev/null >> "$REPORT"
+    "$UPLOADER_DIR/venv/bin/pip" freeze 2>/dev/null > "$OUTPUT_DIR/uploader/requirements.txt"
+    log "uploader requirements.txt generated"
+elif [ -f "$UPLOADER_DIR/requirements.txt" ]; then
+    cat "$UPLOADER_DIR/requirements.txt" >> "$REPORT"
+    cp "$UPLOADER_DIR/requirements.txt" "$OUTPUT_DIR/uploader/requirements.txt"
+    log "uploader requirements.txt copied"
+else
+    echo "  (no venv or requirements.txt found)" >> "$REPORT"
+    warn "Could not determine uploader Python dependencies"
+fi
+
+echo "" >> "$REPORT"
+echo "--- uploader .env / config ---" >> "$REPORT"
+if [ -f "$UPLOADER_DIR/.env" ]; then
+    echo "  .env found (NOT copying — handle manually)" >> "$REPORT"
+    warn ".env found at $UPLOADER_DIR/.env — copy this manually to new server"
+else
+    echo "  (no .env found in $UPLOADER_DIR)" >> "$REPORT"
+fi
+
+
+# =============================================================================
+# 15. PHP EXTENSION GAP (7.4 vs 8.2)
+# =============================================================================
+divider "15. PHP EXTENSION GAP (7.4 vs 8.2)"
+info "Checking PHP extension gap between 7.4 and 8.2..."
+
+PHP74_EXTS=$(php7.4 -m 2>/dev/null | grep -v '\[' | sort)
+PHP82_EXTS=$(php8.2 -m 2>/dev/null | grep -v '\[' | sort)
+
+echo "--- Extensions in PHP 7.4 but missing in PHP 8.2 ---" >> "$REPORT"
+if [ -n "$PHP74_EXTS" ] && [ -n "$PHP82_EXTS" ]; then
+    MISSING=$(comm -23 <(echo "$PHP74_EXTS") <(echo "$PHP82_EXTS"))
+    if [ -n "$MISSING" ]; then
+        echo "$MISSING" | sed 's/^/  /' >> "$REPORT"
+        warn "Some PHP 7.4 extensions are not installed on PHP 8.2 — see report section 15"
+    else
+        echo "  (none — PHP 8.2 has all extensions that 7.4 has)" >> "$REPORT"
+    fi
+else
+    echo "  (could not compare — one or both PHP versions not available via CLI)" >> "$REPORT"
+    echo "" >> "$REPORT"
+    echo "--- PHP 7.4 installed packages (from apt) ---" >> "$REPORT"
+    dpkg -l 'php7.4-*' 2>/dev/null | grep '^ii' | awk '{print "  "$2}' >> "$REPORT" || echo "  (none)" >> "$REPORT"
+    echo "" >> "$REPORT"
+    echo "--- PHP 8.2 installed packages (from apt) ---" >> "$REPORT"
+    dpkg -l 'php8.2-*' 2>/dev/null | grep '^ii' | awk '{print "  "$2}' >> "$REPORT" || echo "  (none)" >> "$REPORT"
+fi
+
+log "PHP extension gap check complete"
+
+
+# =============================================================================
 # BUILD manifest.json
 # =============================================================================
 info "Building manifest.json..."
@@ -390,6 +477,7 @@ echo "    ✔  nginx/                 — Nginx vhost configs"
 echo "    ✔  supervisor/            — Supervisor configs"
 echo "    ✔  systemd/               — Custom service files"
 echo "    ✔  crontab_user.txt       — Cron jobs"
+echo "    ✔  uploader/              — main.py, requirements.txt, uploader.service"
 echo ""
 echo "  Next steps:"
 echo "    1. Review migration_report.txt carefully"
