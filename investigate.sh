@@ -283,6 +283,14 @@ for base in /var/www /home /srv /opt; do
         find "$base" -maxdepth 4 -name "artisan" 2>/dev/null | while read artisan; do
             app_dir=$(dirname "$artisan")
             echo "  $app_dir" >> "$REPORT"
+            if [ -d "$app_dir/.git" ]; then
+                GIT_REMOTE=$(git -C "$app_dir" remote get-url origin 2>/dev/null || echo "no remote configured")
+                GIT_BRANCH=$(git -C "$app_dir" branch --show-current 2>/dev/null || echo "unknown")
+                echo "    → Git remote: $GIT_REMOTE" >> "$REPORT"
+                echo "    → Git branch: $GIT_BRANCH" >> "$REPORT"
+            else
+                echo "    → Git: not a git repo" >> "$REPORT"
+            fi
             if [ -f "$app_dir/.env" ]; then
                 echo "    → .env found (NOT copying — handle manually)" >> "$REPORT"
                 warn ".env found at $app_dir/.env — copy this manually to new server"
